@@ -1,0 +1,30 @@
+# segredos
+.env
+.env.*
+!.env.example
+# dependências e builds
+node_modules/
+vendor/
+.next/
+out/
+dist/
+coverage/
+.cache/
+# arquivos pesados / gerados
+uploads/
+storage/logs/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+storage/app/public/
+*.log
+*.sql
+*.sql.gz
+*.zip
+*.tar.gz
+# lixo
+*.bak
+*.save
+12.0.2
+.DS_Store
+src/teste.php

@@ -1,0 +1,18 @@
+{
+    "name": "giovani/luxcatalogo",
+    "autoload": {
+        "psr-4": {
+            "Giovani\\Luxcatalogo\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Giovani Alencar",
+            "email": "giovaniaale@gmail.com"
+        }
+    ],
+    "require": {
+        "twilio/sdk": "^8.3",
+        "setasign/fpdf": "^1.8"
+    }
+}

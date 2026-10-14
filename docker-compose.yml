@@ -1,0 +1,31 @@
+services:
+
+  catalogo_app:
+    image: php:8.2-apache
+    container_name: catalogo_app
+    volumes:
+      - ./src:/var/www/html
+    ports:
+      - "8090:80"
+    networks:
+      - lux_network
+
+  catalogo_db:
+    image: mysql:8.0
+    container_name: catalogo_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: catalogo
+    volumes:
+      - catalogo_db_data:/var/lib/mysql
+    ports:
+      - "3310:3306"
+    networks:
+      - lux_network
+
+networks:
+  lux_network:
+    external: true
+
+volumes:
+  catalogo_db_data:
