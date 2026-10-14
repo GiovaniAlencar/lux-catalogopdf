@@ -19,7 +19,7 @@ services:
     volumes:
       - catalogo_db_data:/var/lib/mysql
     ports:
-      - "3310:3306"
+      - "127.0.0.1:3310:3306"
     networks:
       - lux_network
 

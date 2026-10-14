@@ -19,9 +19,8 @@ if ($marcaNormalizada === '') {
     exit();
 }
 
-$pdo = new PDO('mysql:host=localhost;dbname=luxcatalogo', 'root', '', [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-]);
+require_once __DIR__ . '/lib/config.php';
+$pdo = luxDb('catalogo');
 
 $stmt = $pdo->prepare('SELECT id, id_erp, nome FROM products WHERE marca = ? ORDER BY nome');
 $stmt->execute([$marcaNormalizada]);

@@ -5,7 +5,8 @@ require_once 'converter_imagem.php';
 require_once __DIR__ . '/marca_options.php';
 
 // Conexão com o banco de dados
-$pdo = new PDO('mysql:host=catalogo_db;dbname=catalogo;charset=utf8', 'root', 'root');
+require_once __DIR__ . '/lib/config.php';
+$pdo = luxDb('catalogo');
 
 // Verifica se é uma requisição POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

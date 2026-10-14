@@ -1,4 +1,4 @@
-<?php require_once __DIR__ . '/auth_check.php'; ?>
+<?php require_once __DIR__ . '/auth_check.php'; require_once __DIR__ . '/lib/config.php'; ?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -135,7 +135,7 @@
                 </a>
             </div>
             <div class="col-md-3">
-                <a href="products-catalog.php" class="btn btn-warning w-100 py-3">
+                <a href="<?= htmlspecialchars(luxConfig()['site_url']) ?>" target="_blank" rel="noopener" class="btn btn-warning w-100 py-3">
                     <i class="fas fa-eye mb-2"></i><br>
                     Ver Catálogo
                 </a>

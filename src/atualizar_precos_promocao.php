@@ -10,6 +10,12 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+require_once __DIR__ . '/lib/config.php';
+
 header('Content-Type: text/plain; charset=utf-8');
 
 function resolverPastaBackup(): string
@@ -253,9 +259,7 @@ $arquivoEntrada = resolverArquivoEntrada($argv[1] ?? null);
 $backupDir = resolverPastaBackup();
 
 try {
-    $pdoERP = new PDO('mysql:host=erp_db;port=3306;dbname=erp', 'root', 'B4ncOLUXErp!', [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    ]);
+    $pdoERP = luxDb('erp');
 } catch (PDOException $e) {
     die('Erro na conexão com o ERP: ' . $e->getMessage() . "\n");
 }

@@ -1,10 +1,21 @@
 <?php
 session_start();
 header('Content-Type: text/html; charset=utf-8');
+require_once __DIR__ . '/lib/config.php';
+
+/** Só aceita destino interno (evita redirecionar para outro site). */
+function destinoSeguro(?string $d): string
+{
+    $d = (string) $d;
+    if ($d === '' || preg_match('#^[a-z][a-z0-9+.-]*:|^//|^\\\\|[\r\n]#i', $d) || strpos($d, '\\') !== false) {
+        return 'index.php';
+    }
+    return $d;
+}
 
 // Se já está logado, redireciona para o dashboard
 if (!empty($_SESSION['usuario_id'])) {
-    header('Location: ' . (isset($_GET['redirecionar']) ? $_GET['redirecionar'] : 'index.php'));
+    header('Location: ' . destinoSeguro($_GET['redirecionar'] ?? ''));
     exit;
 }
 
@@ -18,9 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $erro = 'Preencha e-mail e senha.';
     } else {
         try {
-            $pdo = new PDO('mysql:host=catalogo_db;dbname=catalogo', 'root', 'root', [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            ]);
+            $pdo = luxDb('catalogo');
             $stmt = $pdo->prepare("SELECT id, nome, email, senha FROM usuarios WHERE email = ? AND ativo = 1 LIMIT 1");
             $stmt->execute([$email]);
             $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -30,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['usuario_id'] = (int) $usuario['id'];
                 $_SESSION['usuario_nome'] = $usuario['nome'];
                 $_SESSION['usuario_email'] = $usuario['email'];
-                $destino = isset($_POST['redirecionar']) && $_POST['redirecionar'] !== '' ? $_POST['redirecionar'] : 'index.php';
+                $destino = destinoSeguro($_POST['redirecionar'] ?? '');
                 header('Location: ' . $destino);
                 exit;
             }

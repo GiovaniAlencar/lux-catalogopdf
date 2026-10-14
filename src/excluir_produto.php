@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/auth_check.php';
 // Conexão com o banco de dados
-$pdo = new PDO('mysql:host=catalogo_db;dbname=catalogo;charset=utf8', 'root', 'root');
+require_once __DIR__ . '/lib/config.php';
+$pdo = luxDb('catalogo');
 
 // Verifica se foi passado um ID
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {

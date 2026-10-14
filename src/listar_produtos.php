@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/auth_check.php';
 // Conexão com o banco de dados
-$pdo = new PDO('mysql:host=catalogo_db;dbname=catalogo;charset=utf8', 'root', 'root');
+require_once __DIR__ . '/lib/config.php';
+$pdo = luxDb('catalogo');
 
 // Recupera os produtos
 $stmt = $pdo->query("SELECT * FROM products ORDER BY nome");
