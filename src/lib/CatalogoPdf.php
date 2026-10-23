@@ -22,6 +22,15 @@ class CatalogoPdf extends FPDF
     public bool $capa = false;
     public int $paginaCapa = 0;
 
+    // cores do card (o catálogo colorido da Ciclo troca estas; os outros ficam no padrão preto + dourado)
+    public array $corCardBorda = self::LINHA;
+    public array $corBotao = [214, 176, 92];
+    public array $corBotaoTexto = self::PRETO;
+    public array $corSelo = self::PRETO;
+    public array $corSeloTexto = self::DOURADO_CLARO;
+    public array $corFaixaTexto = self::DOURADO_ESCURO;
+    public array $corFaixaBorda = self::LINHA;
+
     // área útil das páginas de produtos
     const TOPO = 30;
     const BASE = 278;
@@ -38,7 +47,7 @@ class CatalogoPdf extends FPDF
         return 'R$ ' . number_format((float) $v, 2, ',', '.');
     }
 
-    private function cor(array $c, string $tipo = 'F'): void
+    protected function cor(array $c, string $tipo = 'F'): void
     {
         if ($tipo === 'F') {
             $this->SetFillColor($c[0], $c[1], $c[2]);
@@ -196,7 +205,7 @@ class CatalogoPdf extends FPDF
         $y = self::TOPO + intdiv($pos, self::COLS) * ($h + $gy);
 
         $this->cor([255, 255, 255]);
-        $this->cor(self::LINHA, 'D');
+        $this->cor($this->corCardBorda, 'D');
         $this->SetLineWidth(0.25);
         $this->RoundedRect($x, $y, $w, $h, 2.2, 'DF');
 
@@ -218,9 +227,9 @@ class CatalogoPdf extends FPDF
             $txt = self::t(mb_strtoupper($p['sexo']));
             $this->SetFont('Helvetica', 'B', 4.8);
             $tw = $this->GetStringWidth($txt) + 3.4;
-            $this->cor(self::PRETO);
+            $this->cor($this->corSelo);
             $this->RoundedRect($fx + 1.5, $fy + 1.5, $tw, 3.6, 1.8, 'F');
-            $this->cor(self::DOURADO_CLARO, 'T');
+            $this->cor($this->corSeloTexto, 'T');
             $this->SetXY($fx + 1.5, $fy + 1.5);
             $this->Cell($tw, 3.6, $txt, 0, 0, 'C');
         }
@@ -268,30 +277,30 @@ class CatalogoPdf extends FPDF
                 foreach ($faixas as $i => [$r, $v]) {
                     $bx = $cx + $i * ($bw + 1.4);
                     $this->cor(self::CREME);
-                    $this->cor(self::LINHA, 'D');
+                    $this->cor($this->corFaixaBorda, 'D');
                     $this->RoundedRect($bx, $by, $bw, 6.2, 1.1, 'DF');
                     $this->SetXY($bx, $by + 0.4);
                     $this->SetFont('Helvetica', '', 4.8);
                     $this->cor(self::CINZA, 'T');
                     $this->Cell($bw, 2.4, self::t($r), 0, 2, 'C');
                     $this->SetFont('Helvetica', 'B', 6.4);
-                    $this->cor(self::DOURADO_ESCURO, 'T');
+                    $this->cor($this->corFaixaTexto, 'T');
                     $this->Cell($bw, 3, self::t(self::brl($v)), 0, 0, 'C');
                 }
             }
         }
 
         // botão "Ver detalhes" (abre a página do produto no site)
-        $this->cor([214, 176, 92]);
+        $this->cor($this->corBotao);
         $this->RoundedRect($cx, $byb, $cw, $bh, 1.5, 'F');
         $this->SetXY($cx, $byb);
         $this->SetFont('Helvetica', 'B', 6.4);
-        $this->cor(self::PRETO, 'T');
+        $this->cor($this->corBotaoTexto, 'T');
         $this->Cell($cw, $bh, self::t('VER DETALHES  >'), 0, 0, 'C', false, $p['link']);
         $this->Link($cx, $byb, $cw, $bh, $p['link']);
     }
 
-    private function cortar(string $txt, float $w): string
+    protected function cortar(string $txt, float $w): string
     {
         if ($this->GetStringWidth($txt) <= $w) {
             return $txt;
@@ -303,7 +312,7 @@ class CatalogoPdf extends FPDF
     }
 
     /** Quebra o texto em até $max linhas que cabem na largura (com "..." se sobrar). */
-    private function quebrar(string $txt, float $w, int $max): array
+    protected function quebrar(string $txt, float $w, int $max): array
     {
         $palavras = preg_split('/\s+/', $txt);
         $linhas = [];

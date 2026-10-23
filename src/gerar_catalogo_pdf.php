@@ -2,7 +2,7 @@
 /**
  * Gerador único dos catálogos em PDF (substitui os gerar_catalogo_*.php copiados).
  *   gerar_catalogo_pdf.php?tipo=arabes | frances | miniaturas | hidratantes | vs | sprays
- *                               | sem_preco | sem_preco_miniaturas
+ *                               | sem_preco | sem_preco_miniaturas | ciclo
  *   (POST produtos[] = ids da tabela products do catálogo → tipo "selecionados")
  * Preços iguais ao catálogo antigo; visual do site; 4 produtos por linha (12 por página);
  * botão "Ver detalhes" abre a página do produto em luxatacado.com.br/produto/{id}.
@@ -12,6 +12,7 @@ session_write_close(); // não trava o painel enquanto o PDF é gerado
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/lib/config.php';
 require_once __DIR__ . '/lib/CatalogoPdf.php';
+require_once __DIR__ . '/lib/CatalogoCicloPdf.php';
 
 error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('display_errors', '0');
@@ -29,7 +30,48 @@ const TIPOS = [
     'sem_preco'            => ['Perfumes Árabes', [3], 'nenhum'],
     'sem_preco_miniaturas' => ['Miniaturas', [6], 'nenhum'],
     'selecionados'         => ['Seleção de produtos', [], 'tabela10'],
+    // linha nacional: pega pela marca Ciclo (ERP ou catálogo) ou pela categoria "Ciclo"/"Nacionais" do ERP
+    'ciclo'                => ['Ciclo Cosméticos', [], 'tabela10'],
 ];
+
+/** ids do ERP dos produtos da Ciclo (marca no ERP, marca no catálogo ou categoria Ciclo/Nacionais). */
+function idsCiclo(PDO $erp, PDO $cat): array
+{
+    $ids = [];
+    foreach ($cat->query("SELECT id_erp FROM products WHERE marca LIKE '%ciclo%' AND id_erp IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN) as $i) {
+        $ids[] = (int) $i;
+    }
+    $sql = "SELECT p.id FROM produtos p
+            LEFT JOIN marcas m ON m.id = p.marca_id
+            LEFT JOIN categorias c ON c.id = p.categoria_id
+            WHERE m.nome LIKE '%ciclo%' OR c.nome LIKE '%ciclo%' OR c.nome LIKE 'nacion%'";
+    foreach ($erp->query($sql)->fetchAll(PDO::FETCH_COLUMN) as $i) {
+        $ids[] = (int) $i;
+    }
+    return array_values(array_unique(array_filter($ids)));
+}
+
+/** Linha do produto da Ciclo pelo nome: kids, colonia, splash, hidratante ou outros. */
+function linhaCiclo(array $p): string
+{
+    $n = ' ' . strtoupper(strtr((string) $p['nome'] . ' ' . (string) $p['sexo'], [
+        'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'é' => 'e', 'ê' => 'e', 'í' => 'i', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ú' => 'u', 'ç' => 'c',
+        'Á' => 'A', 'À' => 'A', 'Ã' => 'A', 'Â' => 'A', 'É' => 'E', 'Ê' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ú' => 'U', 'Ç' => 'C',
+    ])) . ' ';
+    if (preg_match('/KIDS?\b|INFANTIL|BABY|BEBE|CRIANCA/', $n)) {
+        return 'kids';
+    }
+    if (preg_match('/SPLASH|BODY MIST|\bMIST\b/', $n)) {
+        return 'splash';
+    }
+    if (preg_match('/HIDRAT|LOCAO|CREME|LOTION|\bOLEO\b|MANTEIGA/', $n)) {
+        return 'hidratante';
+    }
+    if (preg_match('/COLONIA|\bDEO\b|PERFUME|PARFUM|\bEDP\b|\bEDT\b/', $n)) {
+        return 'colonia';
+    }
+    return 'outros';
+}
 
 $tipo = $_GET['tipo'] ?? 'arabes';
 if (!isset(TIPOS[$tipo])) {
@@ -45,7 +87,12 @@ try {
     $cat = luxDb('catalogo');
     // seleção manual: ids do catálogo → ids do ERP
     $idsSelecionados = [];
-    if ($tipo === 'selecionados') {
+    if ($tipo === 'ciclo') {
+        $idsSelecionados = idsCiclo($erp, $cat);
+        if (!$idsSelecionados) {
+            exit('Nenhum produto da Ciclo encontrado (confira a marca ou a categoria no ERP).');
+        }
+    } elseif ($tipo === 'selecionados') {
         $sel = array_slice(array_values(array_filter(array_map('intval', (array) ($_POST['produtos'] ?? [])))), 0, 500);
         if (!$sel) {
             exit('Nenhum produto selecionado.');
@@ -57,7 +104,8 @@ try {
             exit('Os produtos selecionados não estão vinculados ao ERP.');
         }
     }
-    $filtro = $tipo === 'selecionados'
+    $porIds = in_array($tipo, ['selecionados', 'ciclo'], true);
+    $filtro = $porIds
         ? 'p.id IN (' . implode(',', array_fill(0, count($idsSelecionados), '?')) . ')'
         : 'p.categoria_id IN (' . implode(',', array_fill(0, count($categorias), '?')) . ')';
     $ocultar = '';
@@ -73,7 +121,7 @@ try {
         GROUP BY p.id, p.valor_venda, p.preco_2, p.preco_3
         HAVING qtd > 0
     ");
-    $st->execute($tipo === 'selecionados' ? $idsSelecionados : $categorias);
+    $st->execute($porIds ? $idsSelecionados : $categorias);
     $erpRows = [];
     foreach ($st->fetchAll() as $r) {
         $erpRows[(int) $r['id']] = $r;
@@ -101,16 +149,29 @@ if (!$produtos) {
 }
 
 // ---- agrupa por gênero (Femininos, Masculinos, Unissex) e ordena por marca/nome ----
-$grupos = ['feminino' => [], 'masculino' => [], 'unissex' => [], 'outros' => []];
-foreach ($produtos as $p) {
-    $g = mb_strtolower(trim((string) $p['sexo']));
-    $grupos[isset($grupos[$g]) ? $g : 'outros'][] = $p;
+// Ciclo: agrupa por linha (Kids primeiro) e ordena por nome
+if ($tipo === 'ciclo') {
+    $grupos = ['kids' => [], 'colonia' => [], 'splash' => [], 'hidratante' => [], 'outros' => []];
+    foreach ($produtos as $p) {
+        $grupos[linhaCiclo($p)][] = $p;
+    }
+    foreach ($grupos as &$lista) {
+        usort($lista, fn ($a, $b) => strcasecmp($a['nome'], $b['nome']));
+    }
+    unset($lista);
+    $nomesGrupo = ['kids' => 'Ciclo Kids', 'colonia' => 'Colônias e Perfumes', 'splash' => 'Body Splash', 'hidratante' => 'Hidratantes', 'outros' => 'Outros produtos'];
+} else {
+    $grupos = ['feminino' => [], 'masculino' => [], 'unissex' => [], 'outros' => []];
+    foreach ($produtos as $p) {
+        $g = mb_strtolower(trim((string) $p['sexo']));
+        $grupos[isset($grupos[$g]) ? $g : 'outros'][] = $p;
+    }
+    foreach ($grupos as &$lista) {
+        usort($lista, fn ($a, $b) => strcasecmp(trim((string) $a['marca']), trim((string) $b['marca'])) ?: strcasecmp($a['nome'], $b['nome']));
+    }
+    unset($lista);
+    $nomesGrupo = ['feminino' => 'Femininos', 'masculino' => 'Masculinos', 'unissex' => 'Unissex', 'outros' => 'Outros'];
 }
-foreach ($grupos as &$lista) {
-    usort($lista, fn ($a, $b) => strcasecmp(trim((string) $a['marca']), trim((string) $b['marca'])) ?: strcasecmp($a['nome'], $b['nome']));
-}
-unset($lista);
-$nomesGrupo = ['feminino' => 'Femininos', 'masculino' => 'Masculinos', 'unissex' => 'Unissex', 'outros' => 'Outros'];
 
 // ---- fotos: arquivo local (uploads/) ou baixada do CDN; reduzida e guardada em cache ----
 // Tamanho pensado para o card (~45 mm): 360 px / JPEG 70 deixa cada foto com ~10-15 KB.
@@ -248,7 +309,8 @@ function prepararFotos(array $imagens, array $cfg): array
 $fotos = prepararFotos(array_column($produtos, 'imagem'), $cfg);
 
 // ---- monta o PDF ----
-$pdf = new CatalogoPdf('P', 'mm', 'A4');
+$ciclo = $tipo === 'ciclo';
+$pdf = $ciclo ? new CatalogoCicloPdf('P', 'mm', 'A4') : new CatalogoPdf('P', 'mm', 'A4');
 $pdf->SetCompression(true);
 $pdf->cfg = $cfg;
 $pdf->titulo = $titulo;
@@ -258,13 +320,27 @@ $pdf->SetAutoPageBreak(false);
 $pdf->SetMargins(10, 10, 10);
 
 $subtitulo = $precos === 'nenhum' ? 'Catálogo sem preços' : 'Preços para revenda';
-$pdf->Capa($subtitulo, count($produtos));
+if ($ciclo) {
+    $presentes = [];
+    foreach ($grupos as $g => $lista) {
+        if ($lista) {
+            $presentes[] = str_replace('Ciclo ', '', $nomesGrupo[$g]);
+        }
+    }
+    $pdf->CapaCiclo($subtitulo, count($produtos), $presentes);
+} else {
+    $pdf->Capa($subtitulo, count($produtos));
+}
 
 foreach ($grupos as $g => $lista) {
     if (!$lista) {
         continue;
     }
-    $pdf->secao = $nomesGrupo[$g];
+    if ($ciclo) {
+        $pdf->usarSecao($g, $nomesGrupo[$g]);
+    } else {
+        $pdf->secao = $nomesGrupo[$g];
+    }
     foreach ($lista as $i => $p) {
         $pos = $i % CatalogoPdf::POR_PAGINA;
         if ($pos === 0) {
