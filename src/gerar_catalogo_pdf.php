@@ -15,6 +15,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/lib/config.php';
 require_once __DIR__ . '/lib/CatalogoPdf.php';
 require_once __DIR__ . '/lib/CatalogoCicloPdf.php';
+require_once __DIR__ . '/lib/CatalogoBellaPdf.php';
 
 error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('display_errors', '0');
@@ -328,7 +329,7 @@ $fotos = prepararFotos(array_column($produtos, 'imagem'), $cfg);
 
 // ---- monta o PDF ----
 $ciclo = $tipo === 'ciclo';
-$pdf = $ciclo ? new CatalogoCicloPdf('P', 'mm', 'A4') : new CatalogoPdf('P', 'mm', 'A4');
+$pdf = $ciclo ? new CatalogoCicloPdf('P', 'mm', 'A4') : ($marca === 'bella' ? new CatalogoBellaPdf('P', 'mm', 'A4') : new CatalogoPdf('P', 'mm', 'A4'));
 $pdf->SetCompression(true);
 $pdf->cfg = $cfg;
 $pdf->usarMarca($marca, $cfg);
@@ -364,7 +365,7 @@ foreach ($grupos as $g => $lista) {
         $pdf->secao = $nomesGrupo[$g];
     }
     foreach ($lista as $i => $p) {
-        $pos = $i % CatalogoPdf::POR_PAGINA;
+        $pos = $i % $pdf::POR_PAGINA;
         if ($pos === 0) {
             $pdf->AddPage();
         }
