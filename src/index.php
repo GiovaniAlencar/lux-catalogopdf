@@ -193,6 +193,11 @@
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Sem preço (Miniaturas)
                 </a>
             </div>
+            <div class="col-md-4 col-lg-3">
+                <a href="gerar_catalogo_arabes_mae.php" class="btn btn-outline-dark w-100 py-3" target="_blank" rel="noopener">
+                    <i class="fas fa-file-pdf mb-2 d-block"></i> Bella Parfum (5 e 10 un.)
+                </a>
+            </div>
         </div>
     </div>
 

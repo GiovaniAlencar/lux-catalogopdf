@@ -1,7 +1,9 @@
 <?php
 /**
- * Catálogo em PDF no padrão visual do site (preto + dourado), 4 produtos por página.
- * Cada card tem o botão "Ver detalhes" que abre a página do produto no site.
+ * Catálogo em PDF, 12 produtos por página, com três identidades:
+ *   lux    — padrão do site (preto + dourado), botão "Ver detalhes" abre o produto em luxatacado.com.br;
+ *   bella  — Bella Parfum (preto + prata), contatos próprios, botão "Pedir no WhatsApp" (sem site, sem LUX);
+ *   neutro — sem logo, sem nome, sem site e sem contatos (para revendedor repassar ao cliente dele).
  */
 
 class CatalogoPdf extends FPDF
@@ -30,6 +32,80 @@ class CatalogoPdf extends FPDF
     public array $corSeloTexto = self::DOURADO_CLARO;
     public array $corFaixaTexto = self::DOURADO_ESCURO;
     public array $corFaixaBorda = self::LINHA;
+
+    /** identidade em uso (lux | bella | neutro) e os dados dela */
+    public string $marca = 'lux';
+    public array $id = [];
+    public string $textoBotao = 'VER DETALHES  >';
+    // cores do topo e da capa
+    public array $corTopo = self::PRETO;
+    public array $corTopoLinha = self::DOURADO;
+    public array $corTopoTitulo = self::DOURADO_CLARO;
+    public array $corDestaque = self::DOURADO;
+
+    /** Troca a identidade visual. $cfg vem do config.local.php (WhatsApp/Instagram/site da LUX). */
+    public function usarMarca(string $marca, array $cfg): void
+    {
+        $this->marca = $marca;
+        if ($marca === 'bella') {
+            $prata = [208, 208, 212];
+            $this->id = [
+                'nome' => 'Bella Parfum',
+                'rodape' => 'Bella Parfum · Perfumaria Árabe Atacado',
+                'logo' => __DIR__ . '/../assets/pdf/bella_marca.jpg',
+                'capa' => __DIR__ . '/../assets/pdf/bella_capa.jpg',
+                'whatsapp' => '5583998674968',
+                'whatsapp_txt' => '(83) 99867-4968',
+                'instagram' => 'bellaparfunatacado',
+                'site' => null,
+                'site_txt' => null,
+            ];
+            $this->textoBotao = 'PEDIR NO WHATSAPP';
+            $this->corTopo = [17, 15, 13];
+            $this->corTopoLinha = [176, 140, 74];
+            $this->corTopoTitulo = $prata;
+            $this->corDestaque = [176, 140, 74];
+            $this->corBotao = [24, 22, 20];
+            $this->corBotaoTexto = $prata;
+            $this->corSelo = [24, 22, 20];
+            $this->corSeloTexto = $prata;
+            $this->corFaixaTexto = [120, 92, 40];
+        } elseif ($marca === 'neutro') {
+            $this->id = ['nome' => null, 'rodape' => null, 'logo' => null, 'capa' => null, 'whatsapp' => null, 'whatsapp_txt' => null, 'instagram' => null, 'site' => null, 'site_txt' => null];
+            $this->corTopo = [38, 38, 40];
+            $this->corTopoLinha = [168, 154, 134];
+            $this->corTopoTitulo = [240, 236, 228];
+            $this->corDestaque = [168, 154, 134];
+            $this->corSelo = [38, 38, 40];
+            $this->corSeloTexto = [240, 236, 228];
+            $this->corFaixaTexto = [96, 88, 76];
+        } else {
+            $this->id = [
+                'nome' => 'Lux Perfumes',
+                'rodape' => 'Lux Perfumes',
+                'logo' => __DIR__ . '/../assets/pdf/logo.jpg',
+                'capa' => __DIR__ . '/../assets/pdf/logo.jpg',
+                'whatsapp' => $cfg['whatsapp'] ?? null,
+                'whatsapp_txt' => '(83) 99945-9629',
+                'instagram' => $cfg['instagram'] ?? null,
+                'site' => $cfg['site_url'] ?? null,
+                'site_txt' => 'luxatacado.com.br',
+            ];
+        }
+    }
+
+    protected function linkWhats(): string
+    {
+        return !empty($this->id['whatsapp']) ? 'https://wa.me/' . $this->id['whatsapp'] : '';
+    }
+
+    protected function linkPrincipal(): string
+    {
+        if (!empty($this->id['site'])) {
+            return (string) $this->id['site'];
+        }
+        return !empty($this->id['instagram']) ? 'https://instagram.com/' . $this->id['instagram'] : '';
+    }
 
     // área útil das páginas de produtos
     const TOPO = 30;
@@ -101,30 +177,34 @@ class CatalogoPdf extends FPDF
         if ($this->capa) {
             return;
         }
-        $this->cor(self::PRETO);
+        $this->cor($this->corTopo);
         $this->Rect(0, 0, 210, 24, 'F');
-        $this->cor(self::DOURADO);
+        $this->cor($this->corTopoLinha);
         $this->Rect(0, 24, 210, 0.8, 'F');
-        $logo = __DIR__ . '/../assets/pdf/logo.jpg';
-        if (is_file($logo)) {
-            $this->Image($logo, 10, 2, 20, 20, '', $this->cfg['site_url'] ?? '');
+        $logo = $this->id['logo'] ?? null;
+        $xTitulo = 10;
+        if ($logo && is_file($logo)) {
+            $this->Image($logo, 10, 2, 20, 20, '', $this->linkPrincipal());
+            $xTitulo = 34;
         }
-        $this->SetXY(34, 6);
+        $this->SetXY($xTitulo, 6);
         $this->SetFont('Helvetica', 'B', 13);
-        $this->cor(self::DOURADO_CLARO, 'T');
+        $this->cor($this->corTopoTitulo, 'T');
         $this->Cell(120, 7, self::t(mb_strtoupper($this->titulo)), 0, 2);
         $this->SetFont('Helvetica', '', 8.5);
         $this->cor([200, 200, 200], 'T');
         $this->Cell(120, 5, self::t($this->secao), 0, 0);
-        // canto direito: WhatsApp clicável
-        $this->SetXY(140, 8);
-        $this->SetFont('Helvetica', 'B', 8.5);
-        $this->cor(self::DOURADO_CLARO, 'T');
-        $wa = 'https://wa.me/' . ($this->cfg['whatsapp'] ?? '');
-        $this->Cell(60, 5, self::t('Pedidos: (83) 99945-9629'), 0, 2, 'R', false, $wa);
-        $this->SetFont('Helvetica', '', 8);
-        $this->cor([200, 200, 200], 'T');
-        $this->Cell(60, 5, self::t('luxatacado.com.br'), 0, 0, 'R', false, $this->cfg['site_url'] ?? '');
+        // canto direito: contatos clicáveis (o neutro não tem)
+        if (!empty($this->id['whatsapp_txt'])) {
+            $this->SetXY(140, 8);
+            $this->SetFont('Helvetica', 'B', 8.5);
+            $this->cor($this->corTopoTitulo, 'T');
+            $this->Cell(60, 5, self::t('Pedidos: ' . $this->id['whatsapp_txt']), 0, 2, 'R', false, $this->linkWhats());
+            $this->SetFont('Helvetica', '', 8);
+            $this->cor([200, 200, 200], 'T');
+            $sub = $this->id['site_txt'] ?: ($this->id['instagram'] ? '@' . $this->id['instagram'] : '');
+            $this->Cell(60, 5, self::t($sub), 0, 0, 'R', false, $this->linkPrincipal());
+        }
     }
 
     public function Footer()
@@ -138,7 +218,7 @@ class CatalogoPdf extends FPDF
         $this->SetY(282.5);
         $this->SetFont('Helvetica', '', 7.5);
         $this->cor(self::CINZA, 'T');
-        $this->Cell(95, 4, self::t('Lux Perfumes'), 0, 0, 'L');
+        $this->Cell(95, 4, self::t((string) ($this->id['rodape'] ?? '')), 0, 0, 'L');
         $this->Cell(95, 4, self::t('Página ' . ($this->PageNo() - 1) . ' · Atualizado em ' . date('d/m/Y')), 0, 1, 'R');
         $this->SetFont('Helvetica', 'I', 6.8);
         $this->Cell(190, 4, self::t('*A disponibilidade dos itens e o preço devem ser consultados no dia da compra.'), 0, 0, 'C');
@@ -150,42 +230,52 @@ class CatalogoPdf extends FPDF
         $this->capa = true;
         $this->AddPage();
         $this->paginaCapa = $this->PageNo();
-        $this->cor(self::PRETO);
+        $this->cor($this->corTopo);
         $this->Rect(0, 0, 210, 297, 'F');
-        $logo = __DIR__ . '/../assets/pdf/logo.jpg';
-        if (is_file($logo)) {
-            $this->Image($logo, 65, 45, 80, 80, '', $this->cfg['site_url'] ?? '');
+        $logo = $this->id['capa'] ?? null;
+        $yTexto = 140;
+        if ($this->marca === 'bella' && $logo && is_file($logo)) {
+            // logo da Bella em destaque, ocupando o topo da capa
+            $this->Image($logo, 30, 18, 150, 150, '', $this->linkPrincipal());
+            $yTexto = 176;
+        } elseif ($logo && is_file($logo)) {
+            $this->Image($logo, 65, 45, 80, 80, '', $this->linkPrincipal());
+        } else {
+            $yTexto = 105; // sem logo: título mais no meio
         }
-        $this->SetY(140);
+        $this->SetY($yTexto);
         $this->SetFont('Helvetica', '', 10);
-        $this->cor(self::DOURADO_CLARO, 'T');
+        $this->cor($this->corTopoTitulo, 'T');
         $this->Cell(0, 6, self::t('C A T Á L O G O'), 0, 1, 'C');
         $this->SetFont('Helvetica', 'B', 30);
-        $this->cor(self::DOURADO, 'T');
+        $this->cor($this->marca === 'bella' ? $this->corTopoTitulo : $this->corDestaque, 'T');
         $this->Cell(0, 16, self::t(mb_strtoupper($this->titulo)), 0, 1, 'C');
         $this->SetFont('Helvetica', '', 11);
         $this->cor([210, 210, 210], 'T');
         $this->Cell(0, 7, self::t($subtitulo), 0, 1, 'C');
         $this->Ln(4);
-        $this->cor(self::DOURADO);
+        $this->cor($this->corDestaque);
         $this->Rect(95, $this->GetY(), 20, 0.8, 'F');
         $this->Ln(8);
         $this->SetFont('Helvetica', '', 9.5);
         $this->cor([170, 170, 170], 'T');
         $this->Cell(0, 6, self::t('Atualizado em ' . date('d/m/Y \à\s H:i')), 0, 1, 'C');
 
-        // contatos clicáveis
-        $this->SetY(238);
-        $this->SetFont('Helvetica', 'B', 11);
-        $this->cor(self::DOURADO_CLARO, 'T');
-        $this->Cell(0, 7, self::t('Pedidos pelo WhatsApp: (83) 99945-9629'), 0, 1, 'C', false, 'https://wa.me/' . ($this->cfg['whatsapp'] ?? ''));
-        $this->SetFont('Helvetica', '', 10);
-        $this->cor([210, 210, 210], 'T');
-        $this->Cell(0, 6, self::t('luxatacado.com.br  ·  @' . ($this->cfg['instagram'] ?? '')), 0, 1, 'C', false, $this->cfg['site_url'] ?? '');
-        $this->Ln(10);
-        $this->SetFont('Helvetica', '', 7.5);
-        $this->cor([120, 120, 120], 'T');
-        $this->Cell(0, 5, self::t('Lux Perfumes'), 0, 1, 'C');
+        // contatos clicáveis (o neutro não tem)
+        if (!empty($this->id['whatsapp_txt'])) {
+            $this->SetY($this->marca === 'bella' ? 246 : 238);
+            $this->SetFont('Helvetica', 'B', 11);
+            $this->cor($this->marca === 'bella' ? $this->corTopoTitulo : self::DOURADO_CLARO, 'T');
+            $this->Cell(0, 7, self::t('Pedidos pelo WhatsApp: ' . $this->id['whatsapp_txt']), 0, 1, 'C', false, $this->linkWhats());
+            $this->SetFont('Helvetica', '', 10);
+            $this->cor([210, 210, 210], 'T');
+            $linha = array_filter([$this->id['site_txt'], $this->id['instagram'] ? '@' . $this->id['instagram'] : null]);
+            $this->Cell(0, 6, self::t(implode('  ·  ', $linha)), 0, 1, 'C', false, $this->linkPrincipal());
+            $this->Ln(10);
+            $this->SetFont('Helvetica', '', 7.5);
+            $this->cor([120, 120, 120], 'T');
+            $this->Cell(0, 5, self::t((string) $this->id['rodape']), 0, 1, 'C');
+        }
         $this->capa = false;
     }
 
@@ -194,7 +284,13 @@ class CatalogoPdf extends FPDF
     const LINHAS = 3;
     const POR_PAGINA = self::COLS * self::LINHAS;
 
-    /** Card do produto na posição 0..11 da página. $precos: tabela10 | tabela6 | unico | nenhum */
+    /** Preço da Bella: sobre o preço de 20 un. da LUX, arredondado em reais (regra do catálogo antigo dela). */
+    public static function precoBella($preco3, float $fator): float
+    {
+        return (float) $preco3 > 0 ? round((float) $preco3 * $fator) : 0.0;
+    }
+
+    /** Card do produto na posição 0..11 da página. $precos: tabela10 | tabela6 | unico | bella | bella10 | nenhum */
     public function Card(array $p, int $pos, string $precos, ?string $foto): void
     {
         $gx = 4;
@@ -213,7 +309,8 @@ class CatalogoPdf extends FPDF
         $fx = $x + 2;
         $fy = $y + 2;
         $fw = $w - 4;
-        $fh = 42;
+        // sem preço e sem botão (catálogo neutro): a foto ocupa o espaço que sobraria
+        $fh = ($precos === 'nenhum' && empty($p['link'])) ? $h - 18 : 42;
         $this->cor(self::FUNDO_FOTO);
         $this->RoundedRect($fx, $fy, $fw, $fh, 1.6, 'F');
         if ($foto && is_file($foto)) {
@@ -252,7 +349,36 @@ class CatalogoPdf extends FPDF
         // preços (mesmas regras do catálogo antigo)
         $bh = 6.2;
         $byb = $y + $h - $bh - 2.2;
-        if ($precos !== 'nenhum') {
+        $temLink = !empty($p['link']);
+        if (!$temLink) {
+            $byb += $bh; // sem botão: os preços descem
+        }
+        if ($precos === 'bella' || $precos === 'bella10') {
+            $p5 = self::precoBella($p['preco_3'] ?? 0, 1.22);
+            $p10 = self::precoBella($p['preco_3'] ?? 0, $precos === 'bella' ? 1.18 : 1.12);
+            if ($precos === 'bella10') {
+                $this->SetXY($cx, $byb - 7.4);
+                $this->SetFont('Helvetica', 'B', 10.5);
+                $this->cor(self::PRETO, 'T');
+                $this->Cell($cw, 6, self::t($p10 > 0 ? self::brl($p10) : 'Consulte'), 0, 2);
+            } else {
+                $bw = ($cw - 1.4) / 2;
+                $by = $byb - 9.4;
+                foreach ([['5 un.', $p5], ['10 un.', $p10]] as $i => [$r, $v]) {
+                    $bx = $cx + $i * ($bw + 1.4);
+                    $this->cor(self::CREME);
+                    $this->cor($this->corFaixaBorda, 'D');
+                    $this->RoundedRect($bx, $by, $bw, 8.2, 1.1, 'DF');
+                    $this->SetXY($bx, $by + 0.6);
+                    $this->SetFont('Helvetica', '', 5.4);
+                    $this->cor(self::CINZA, 'T');
+                    $this->Cell($bw, 2.8, self::t($r), 0, 2, 'C');
+                    $this->SetFont('Helvetica', 'B', 7.6);
+                    $this->cor(self::PRETO, 'T');
+                    $this->Cell($bw, 4, self::t($v > 0 ? self::brl($v) : 'Consulte'), 0, 0, 'C');
+                }
+            }
+        } elseif ($precos !== 'nenhum') {
             $faixas = [];
             if ($precos === 'tabela10') {
                 $faixas = [['10 un.', $p['preco_2']], ['20 un.', $p['preco_3']]];
@@ -290,13 +416,16 @@ class CatalogoPdf extends FPDF
             }
         }
 
-        // botão "Ver detalhes" (abre a página do produto no site)
+        // botão: "Ver detalhes" (site da LUX) ou "Pedir no WhatsApp" (Bella); o neutro não tem
+        if (!$temLink) {
+            return;
+        }
         $this->cor($this->corBotao);
         $this->RoundedRect($cx, $byb, $cw, $bh, 1.5, 'F');
         $this->SetXY($cx, $byb);
         $this->SetFont('Helvetica', 'B', 6.4);
         $this->cor($this->corBotaoTexto, 'T');
-        $this->Cell($cw, $bh, self::t('VER DETALHES  >'), 0, 0, 'C', false, $p['link']);
+        $this->Cell($cw, $bh, self::t($this->textoBotao), 0, 0, 'C', false, $p['link']);
         $this->Link($cx, $byb, $cw, $bh, $p['link']);
     }
 

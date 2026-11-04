@@ -2,10 +2,12 @@
 /**
  * Gerador único dos catálogos em PDF (substitui os gerar_catalogo_*.php copiados).
  *   gerar_catalogo_pdf.php?tipo=arabes | frances | miniaturas | hidratantes | vs | sprays
- *                               | sem_preco | sem_preco_miniaturas | ciclo
+ *                               | sem_preco | sem_preco_miniaturas | ciclo | arabes_mae | arabes_mae_10
  *   (POST produtos[] = ids da tabela products do catálogo → tipo "selecionados")
  * Preços iguais ao catálogo antigo; visual do site; 4 produtos por linha (12 por página);
  * botão "Ver detalhes" abre a página do produto em luxatacado.com.br/produto/{id}.
+ * Identidade: lux (padrão) · bella (Bella Parfum: logo, WhatsApp e Instagram dela, sem site e sem LUX)
+ *             · neutro (sem preço, para o revendedor repassar: sem logo, nome, site ou contato).
  */
 require_once __DIR__ . '/auth_check.php';
 session_write_close(); // não trava o painel enquanto o PDF é gerado
@@ -19,20 +21,36 @@ ini_set('display_errors', '0');
 set_time_limit(300);
 ini_set('memory_limit', '512M');
 
-// tipo => [título, categorias do ERP, preços]
+// tipo => [título, categorias do ERP, preços, identidade]
 const TIPOS = [
-    'arabes'               => ['Perfumes Árabes', [3], 'tabela10'],
-    'frances'              => ['Perfumes Importados', [8], 'tabela10'],
-    'miniaturas'           => ['Miniaturas', [6], 'tabela6'],
-    'hidratantes'          => ['Hidratantes', [4], 'unico'],
-    'vs'                   => ['Body Splash', [7, 9], 'unico'],
-    'sprays'               => ['Body Sprays', [5], 'unico'],
-    'sem_preco'            => ['Perfumes Árabes', [3], 'nenhum'],
-    'sem_preco_miniaturas' => ['Miniaturas', [6], 'nenhum'],
-    'selecionados'         => ['Seleção de produtos', [], 'tabela10'],
+    'arabes'               => ['Perfumes Árabes', [3], 'tabela10', 'lux'],
+    'frances'              => ['Perfumes Importados', [8], 'tabela10', 'lux'],
+    'miniaturas'           => ['Miniaturas', [6], 'tabela6', 'lux'],
+    'hidratantes'          => ['Hidratantes', [4], 'unico', 'lux'],
+    'vs'                   => ['Body Splash', [7, 9], 'unico', 'lux'],
+    'sprays'               => ['Body Sprays', [5], 'unico', 'lux'],
+    // para o revendedor mandar ao cliente dele: sem preço e sem identidade da LUX
+    'sem_preco'            => ['Perfumes Árabes', [3], 'nenhum', 'neutro'],
+    'sem_preco_miniaturas' => ['Miniaturas', [6], 'nenhum', 'neutro'],
+    'selecionados'         => ['Seleção de produtos', [], 'tabela10', 'lux'],
     // linha nacional: pega pela marca Ciclo (ERP ou catálogo) ou pela categoria "Ciclo"/"Nacionais" do ERP
-    'ciclo'                => ['Ciclo Cosméticos', [], 'tabela10'],
+    'ciclo'                => ['Ciclo Cosméticos', [], 'tabela10', 'lux'],
+    // Bella Parfum: preços dela sobre o preço de 20 un. (5 un. +22% e 10 un. +18%; o "_10" só um preço, +12%)
+    'arabes_mae'           => ['Perfumes Árabes', [3], 'bella', 'bella'],
+    'arabes_mae_10'        => ['Perfumes Árabes', [3], 'bella10', 'bella'],
 ];
+
+/** Link do produto no PDF conforme a identidade. */
+function linkProduto(string $marca, int $id, string $nome, array $cfg): ?string
+{
+    if ($marca === 'neutro') {
+        return null; // não leva a nenhum site
+    }
+    if ($marca === 'bella') {
+        return 'https://wa.me/5583998674968?text=' . rawurlencode('Olá! Tenho interesse no perfume ' . trim($nome) . '.');
+    }
+    return rtrim($cfg['site_url'], '/') . '/produto/' . $id;
+}
 
 /** ids do ERP dos produtos da Ciclo (marca no ERP, marca no catálogo ou categoria Ciclo/Nacionais). */
 function idsCiclo(PDO $erp, PDO $cat): array
@@ -78,7 +96,7 @@ if (!isset(TIPOS[$tipo])) {
     http_response_code(404);
     exit('Catálogo inexistente.');
 }
-[$titulo, $categorias, $precos] = TIPOS[$tipo];
+[$titulo, $categorias, $precos, $marca] = TIPOS[$tipo];
 $cfg = luxConfig();
 
 // ---- produtos com estoque (ERP) + nome/foto/marca (catálogo) ----
@@ -134,7 +152,7 @@ try {
         foreach ($st->fetchAll() as $c) {
             $id = (int) $c['id_erp'];
             $produtos[] = $c + $erpRows[$id] + [
-                'link' => rtrim($cfg['site_url'], '/') . '/produto/' . $id,
+                'link' => linkProduto($marca, $id, (string) $c['nome'], $cfg),
             ];
         }
     }
@@ -313,13 +331,17 @@ $ciclo = $tipo === 'ciclo';
 $pdf = $ciclo ? new CatalogoCicloPdf('P', 'mm', 'A4') : new CatalogoPdf('P', 'mm', 'A4');
 $pdf->SetCompression(true);
 $pdf->cfg = $cfg;
+$pdf->usarMarca($marca, $cfg);
 $pdf->titulo = $titulo;
-$pdf->SetTitle(CatalogoPdf::t('Catálogo ' . $titulo . ' - Lux Perfumes'));
-$pdf->SetAuthor('Lux Perfumes');
+$nomeMarca = $pdf->id['nome'] ?? null;
+$pdf->SetTitle(CatalogoPdf::t('Catálogo ' . $titulo . ($nomeMarca ? ' - ' . $nomeMarca : '')));
+if ($nomeMarca) {
+    $pdf->SetAuthor(CatalogoPdf::t($nomeMarca));
+}
 $pdf->SetAutoPageBreak(false);
 $pdf->SetMargins(10, 10, 10);
 
-$subtitulo = $precos === 'nenhum' ? 'Catálogo sem preços' : 'Preços para revenda';
+$subtitulo = $marca === 'neutro' ? 'Consulte disponibilidade e valores' : ($precos === 'nenhum' ? 'Catálogo sem preços' : 'Preços para revenda');
 if ($ciclo) {
     $presentes = [];
     foreach ($grupos as $g => $lista) {
@@ -353,5 +375,9 @@ foreach ($grupos as $g => $lista) {
 if (ob_get_length()) {
     ob_end_clean();
 }
-$arquivo = 'catalogo-' . $tipo . '-' . date('d-m-Y') . '.pdf';
+$arquivo = match ($marca) {
+    'bella' => 'catalogo-bella-parfum-' . date('d-m-Y') . '.pdf',
+    'neutro' => 'catalogo-' . ($tipo === 'sem_preco_miniaturas' ? 'miniaturas' : 'perfumes-arabes') . '-' . date('d-m-Y') . '.pdf',
+    default => 'catalogo-' . $tipo . '-' . date('d-m-Y') . '.pdf',
+};
 $pdf->Output('I', $arquivo);
