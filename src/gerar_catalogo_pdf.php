@@ -2,7 +2,7 @@
 /**
  * Gerador único dos catálogos em PDF (substitui os gerar_catalogo_*.php copiados).
  *   gerar_catalogo_pdf.php?tipo=arabes | frances | miniaturas | hidratantes | vs | sprays
- *                               | sem_preco | sem_preco_miniaturas | ciclo | arabes_mae | arabes_mae_10
+ *                               | sem_preco | sem_preco_miniaturas | ciclo | paris | arabes_mae | arabes_mae_10
  *   (POST produtos[] = ids da tabela products do catálogo → tipo "selecionados")
  * Preços iguais ao catálogo antigo; visual do site; 4 produtos por linha (12 por página);
  * botão "Ver detalhes" abre a página do produto em luxatacado.com.br/produto/{id}.
@@ -36,6 +36,8 @@ const TIPOS = [
     'selecionados'         => ['Seleção de produtos', [], 'tabela10', 'lux'],
     // linha nacional: pega pela marca Ciclo (ERP ou catálogo) ou pela categoria "Ciclo"/"Nacionais" do ERP
     'ciclo'                => ['Ciclo Cosméticos', [], 'tabela10', 'lux'],
+    // linha nacional Paris Elysees: pela marca (ERP ou catálogo) ou "Paris Elysees" no nome
+    'paris'                => ['Paris Elysees', [], 'tabela10', 'lux'],
     // Bella Parfum: preços dela sobre o preço de 20 un. (5 un. +22% e 10 un. +18%; o "_10" só um preço, +12%)
     'arabes_mae'           => ['Perfumes Árabes', [3], 'bella', 'bella'],
     'arabes_mae_10'        => ['Perfumes Árabes', [3], 'bella10', 'bella'],
@@ -53,7 +55,26 @@ function linkProduto(string $marca, int $id, string $nome, array $cfg): ?string
     return rtrim($cfg['site_url'], '/') . '/produto/' . $id;
 }
 
-/** ids do ERP dos produtos da Ciclo (marca no ERP, marca no catálogo ou categoria Ciclo/Nacionais). */
+/** ids do ERP dos produtos da Paris Elysees (marca no ERP, marca no catálogo ou nome). */
+function idsParis(PDO $erp, PDO $cat): array
+{
+    $ids = [];
+    foreach ($cat->query("SELECT id_erp FROM products WHERE (marca LIKE '%paris%elys%' OR nome LIKE '%paris%elys%') AND id_erp IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN) as $i) {
+        $ids[] = (int) $i;
+    }
+    $sql = "SELECT p.id FROM produtos p
+            LEFT JOIN marcas m ON m.id = p.marca_id
+            WHERE m.nome LIKE '%paris%elys%' OR p.nome LIKE '%paris%elys%'";
+    foreach ($erp->query($sql)->fetchAll(PDO::FETCH_COLUMN) as $i) {
+        $ids[] = (int) $i;
+    }
+    return array_values(array_unique(array_filter($ids)));
+}
+
+/**
+ * ids do ERP dos produtos da Ciclo (marca no ERP, marca no catálogo ou categoria Ciclo/Nacionais).
+ * A categoria "Nacionais" também tem a Paris Elysees (11/11/2026): essa fica de fora daqui.
+ */
 function idsCiclo(PDO $erp, PDO $cat): array
 {
     $ids = [];
@@ -67,7 +88,7 @@ function idsCiclo(PDO $erp, PDO $cat): array
     foreach ($erp->query($sql)->fetchAll(PDO::FETCH_COLUMN) as $i) {
         $ids[] = (int) $i;
     }
-    return array_values(array_unique(array_filter($ids)));
+    return array_values(array_diff(array_unique(array_filter($ids)), idsParis($erp, $cat)));
 }
 
 /** Linha do produto da Ciclo pelo nome: kids, colonia, splash, hidratante ou outros. */
@@ -111,6 +132,11 @@ try {
         if (!$idsSelecionados) {
             exit('Nenhum produto da Ciclo encontrado (confira a marca ou a categoria no ERP).');
         }
+    } elseif ($tipo === 'paris') {
+        $idsSelecionados = idsParis($erp, $cat);
+        if (!$idsSelecionados) {
+            exit('Nenhum produto da Paris Elysees encontrado (confira a marca no ERP ou no catálogo).');
+        }
     } elseif ($tipo === 'selecionados') {
         $sel = array_slice(array_values(array_filter(array_map('intval', (array) ($_POST['produtos'] ?? [])))), 0, 500);
         if (!$sel) {
@@ -123,7 +149,7 @@ try {
             exit('Os produtos selecionados não estão vinculados ao ERP.');
         }
     }
-    $porIds = in_array($tipo, ['selecionados', 'ciclo'], true);
+    $porIds = in_array($tipo, ['selecionados', 'ciclo', 'paris'], true);
     $filtro = $porIds
         ? 'p.id IN (' . implode(',', array_fill(0, count($idsSelecionados), '?')) . ')'
         : 'p.categoria_id IN (' . implode(',', array_fill(0, count($categorias), '?')) . ')';

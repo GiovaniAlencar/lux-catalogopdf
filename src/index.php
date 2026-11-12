@@ -184,6 +184,11 @@
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
+                <a href="gerar_catalogo_paris.php" class="btn btn-outline-danger w-100 py-3" target="_blank" rel="noopener">
+                    <i class="fas fa-file-pdf mb-2 d-block"></i> Paris Elysees (nacionais)
+                </a>
+            </div>
+            <div class="col-md-4 col-lg-3">
                 <a href="gerar_catalogo_sem_preco.php" class="btn btn-outline-secondary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Sem preço (Arabes)
                 </a>
