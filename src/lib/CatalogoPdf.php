@@ -290,7 +290,41 @@ class CatalogoPdf extends FPDF
         return (float) $preco3 > 0 ? round((float) $preco3 * $fator) : 0.0;
     }
 
-    /** Card do produto na posição 0..11 da página. $precos: tabela10 | tabela6 | unico | bella | bella10 | nenhum */
+    const VERMELHO = [205, 38, 45];
+
+    /**
+     * Página de texto (ex.: brindes da Black): título e blocos com destaque + descrição.
+     * @param array<int, array{0:string,1:string}> $blocos [destaque, texto]
+     */
+    public function PaginaBlocos(string $secao, string $titulo, array $blocos): void
+    {
+        $this->secao = $secao;
+        $this->AddPage();
+        $this->SetXY(10, self::TOPO + 4);
+        $this->SetFont('Helvetica', 'B', 18);
+        $this->cor(self::PRETO, 'T');
+        $this->Cell(190, 10, self::t($titulo), 0, 1, 'L');
+        $this->Ln(4);
+        foreach ($blocos as [$destaque, $texto]) {
+            $y = $this->GetY();
+            $this->cor(self::CREME);
+            $this->cor($this->corCardBorda, 'D');
+            $this->SetLineWidth(0.3);
+            $this->RoundedRect(10, $y, 190, 26, 2.5, 'DF');
+            $this->cor($this->corDestaque);
+            $this->RoundedRect(10, $y, 3.2, 26, 1.2, 'F');
+            $this->SetXY(18, $y + 4);
+            $this->SetFont('Helvetica', 'B', 14);
+            $this->cor(self::PRETO, 'T');
+            $this->Cell(178, 8, self::t($destaque), 0, 2);
+            $this->SetFont('Helvetica', '', 11);
+            $this->cor(self::CINZA, 'T');
+            $this->Cell(178, 7, self::t($texto), 0, 2);
+            $this->SetY($y + 32);
+        }
+    }
+
+    /** Card do produto na posição 0..11 da página. $precos: tabela10 | tabela6 | unico | bella | bella10 | promo | nenhum */
     public function Card(array $p, int $pos, string $precos, ?string $foto): void
     {
         $gx = 4;
@@ -353,7 +387,49 @@ class CatalogoPdf extends FPDF
         if (!$temLink) {
             $byb += $bh; // sem botão: os preços descem
         }
-        if ($precos === 'bella' || $precos === 'bella10') {
+        if ($precos === 'promo') {
+            // Black/promoção: selo de % na foto, "de R$ x" riscado e "por R$ y" em destaque
+            $de = (float) $p['valor_venda'];
+            $por = (float) ($p['promo'] ?? 0);
+            if ($de > 0 && $por > 0 && $por < $de) {
+                $pct = '-' . (int) round((1 - $por / $de) * 100) . '%';
+                $this->SetFont('Helvetica', 'B', 7);
+                $tw = $this->GetStringWidth($pct) + 4;
+                $this->cor(self::VERMELHO);
+                $this->RoundedRect($fx + $fw - $tw - 1.5, $fy + 1.5, $tw, 4.6, 1.2, 'F');
+                $this->SetXY($fx + $fw - $tw - 1.5, $fy + 1.5);
+                $this->cor([255, 255, 255], 'T');
+                $this->Cell($tw, 4.6, $pct, 0, 0, 'C');
+
+                $topo = $byb - 13.2;
+                $this->SetXY($cx, $topo);
+                $this->SetFont('Helvetica', '', 6.2);
+                $this->cor(self::CINZA, 'T');
+                $rot = self::t('de ');
+                $this->Cell($this->GetStringWidth($rot), 4, $rot, 0, 0);
+                $val = self::t(self::brl($de));
+                $vw = $this->GetStringWidth($val);
+                $xv = $this->GetX();
+                $this->Cell($vw, 4, $val, 0, 0);
+                $this->cor(self::CINZA, 'D');
+                $this->SetLineWidth(0.25);
+                $this->Line($xv, $topo + 2.1, $xv + $vw, $topo + 2.1);
+                $this->Cell(4, 4, self::t(' por'), 0, 2);
+                $this->SetXY($cx, $topo + 3.6);
+                $this->SetFont('Helvetica', 'B', 11.5);
+                $this->cor(self::VERMELHO, 'T');
+                $this->Cell($cw, 6, self::t(self::brl($por)), 0, 2);
+                $this->SetX($cx);
+                $this->SetFont('Helvetica', '', 5);
+                $this->cor(self::CINZA, 'T');
+                $this->Cell($cw, 2.8, self::t('em qualquer quantidade'), 0, 0);
+            } else {
+                $this->SetXY($cx, $byb - 7.4);
+                $this->SetFont('Helvetica', 'B', 10.5);
+                $this->cor(self::PRETO, 'T');
+                $this->Cell($cw, 6, self::t(self::brl($de)), 0, 2);
+            }
+        } elseif ($precos === 'bella' || $precos === 'bella10') {
             $p5 = self::precoBella($p['preco_3'] ?? 0, 1.22);
             $p10 = self::precoBella($p['preco_3'] ?? 0, $precos === 'bella' ? 1.18 : 1.12);
             if ($precos === 'bella10') {

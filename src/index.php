@@ -189,6 +189,11 @@
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
+                <a href="gerar_catalogo_black.php" class="btn btn-dark w-100 py-3" target="_blank" rel="noopener">
+                    <i class="fas fa-file-pdf mb-2 d-block"></i> Black Friday (promoções do ERP)
+                </a>
+            </div>
+            <div class="col-md-4 col-lg-3">
                 <a href="gerar_catalogo_sem_preco.php" class="btn btn-outline-secondary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Sem preço (Arabes)
                 </a>

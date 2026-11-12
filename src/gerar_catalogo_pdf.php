@@ -2,7 +2,7 @@
 /**
  * Gerador único dos catálogos em PDF (substitui os gerar_catalogo_*.php copiados).
  *   gerar_catalogo_pdf.php?tipo=arabes | frances | miniaturas | hidratantes | vs | sprays
- *                               | sem_preco | sem_preco_miniaturas | ciclo | paris | arabes_mae | arabes_mae_10
+ *                               | sem_preco | sem_preco_miniaturas | ciclo | paris | black | arabes_mae | arabes_mae_10
  *   (POST produtos[] = ids da tabela products do catálogo → tipo "selecionados")
  * Preços iguais ao catálogo antigo; visual do site; 4 produtos por linha (12 por página);
  * botão "Ver detalhes" abre a página do produto em luxatacado.com.br/produto/{id}.
@@ -38,6 +38,9 @@ const TIPOS = [
     'ciclo'                => ['Ciclo Cosméticos', [], 'tabela10', 'lux'],
     // linha nacional Paris Elysees: pela marca (ERP ou catálogo) ou "Paris Elysees" no nome
     'paris'                => ['Paris Elysees', [], 'tabela10', 'lux'],
+    // Black Friday: todos os produtos com promoção ativa ou agendada no ERP (Vendas › Promoções),
+    // separados pela campanha (nome da campanha na importação em lote), com "de/por"
+    'black'                => ['Black Friday LUX', [], 'promo', 'lux'],
     // Bella Parfum: preços dela sobre o preço de 20 un. (5 un. +22% e 10 un. +18%; o "_10" só um preço, +12%)
     'arabes_mae'           => ['Perfumes Árabes', [3], 'bella', 'bella'],
     'arabes_mae_10'        => ['Perfumes Árabes', [3], 'bella10', 'bella'],
@@ -53,6 +56,42 @@ function linkProduto(string $marca, int $id, string $nome, array $cfg): ?string
         return 'https://wa.me/5583998674968?text=' . rawurlencode('Olá! Tenho interesse no perfume ' . trim($nome) . '.');
     }
     return rtrim($cfg['site_url'], '/') . '/produto/' . $id;
+}
+
+// Ordem das campanhas no PDF da Black (as que não estão aqui vêm depois, em ordem alfabética).
+const BLACK_ORDEM = ['LIQUIDA GERAL', 'BLACK MINI', 'BLACK PARIS'];
+
+// Página de brindes do PDF da Black: [destaque, texto]. Mude aqui quando a regra mudar.
+// Vazio = sem página de brindes (as campanhas de brinde são divulgadas por fora).
+// Para voltar: ['Destaque', 'texto'], uma linha por brinde.
+const BLACK_BRINDES = [];
+
+/**
+ * Promoções da Black no ERP: ativas, ainda não vencidas (inclui as agendadas para começar),
+ * com unidades no limite. A mais recente vence quando o produto tem mais de uma.
+ * @return array<int, array{preco:float, campanha:string, ate:string}>
+ */
+function promocoesBlack(PDO $erp): array
+{
+    $sql = "SELECT pr.produto_id, pr.tipo, pr.valor, pr.data_fim, COALESCE(NULLIF(TRIM(pr.observacao), ''), 'OFERTAS') AS campanha, p.valor_venda
+            FROM promocoes pr
+            JOIN produtos p ON p.id = pr.produto_id
+            WHERE pr.ativo = 1 AND pr.data_fim >= CURDATE()
+              AND (pr.quantidade_limite IS NULL OR pr.quantidade_utilizada < pr.quantidade_limite)
+            ORDER BY pr.id DESC";
+    $out = [];
+    foreach ($erp->query($sql)->fetchAll() as $r) {
+        $pid = (int) $r['produto_id'];
+        if (isset($out[$pid])) {
+            continue;
+        }
+        $base = (float) $r['valor_venda'];
+        $preco = $r['tipo'] === 'preco_fixo' ? (float) $r['valor'] : round($base - $base * (float) $r['valor'] / 100, 2);
+        if ($preco > 0 && $preco < $base) {
+            $out[$pid] = ['preco' => round($preco, 2), 'campanha' => mb_strtoupper((string) $r['campanha']), 'ate' => (string) $r['data_fim']];
+        }
+    }
+    return $out;
 }
 
 /** ids do ERP dos produtos da Paris Elysees (marca no ERP, marca no catálogo ou nome). */
@@ -132,6 +171,12 @@ try {
         if (!$idsSelecionados) {
             exit('Nenhum produto da Ciclo encontrado (confira a marca ou a categoria no ERP).');
         }
+    } elseif ($tipo === 'black') {
+        $promosBlack = promocoesBlack($erp);
+        $idsSelecionados = array_keys($promosBlack);
+        if (!$idsSelecionados) {
+            exit('Nenhuma promoção ativa no ERP (Vendas › Promoções). Lance as promoções da Black e gere de novo.');
+        }
     } elseif ($tipo === 'paris') {
         $idsSelecionados = idsParis($erp, $cat);
         if (!$idsSelecionados) {
@@ -149,7 +194,7 @@ try {
             exit('Os produtos selecionados não estão vinculados ao ERP.');
         }
     }
-    $porIds = in_array($tipo, ['selecionados', 'ciclo', 'paris'], true);
+    $porIds = in_array($tipo, ['selecionados', 'ciclo', 'paris', 'black'], true);
     $filtro = $porIds
         ? 'p.id IN (' . implode(',', array_fill(0, count($idsSelecionados), '?')) . ')'
         : 'p.categoria_id IN (' . implode(',', array_fill(0, count($categorias), '?')) . ')';
@@ -159,11 +204,11 @@ try {
         $ocultar = ' AND p.ocultar_site = 0';
     }
     $st = $erp->prepare("
-        SELECT p.id, p.valor_venda, p.preco_2, p.preco_3, SUM(e.quantidade) AS qtd
+        SELECT p.id, p.nome AS nome_erp, p.valor_venda, p.preco_2, p.preco_3, SUM(e.quantidade) AS qtd
         FROM estoques e
         JOIN produtos p ON p.id = e.produto_id
         WHERE $filtro $ocultar
-        GROUP BY p.id, p.valor_venda, p.preco_2, p.preco_3
+        GROUP BY p.id, p.nome, p.valor_venda, p.preco_2, p.preco_3
         HAVING qtd > 0
     ");
     $st->execute($porIds ? $idsSelecionados : $categorias);
@@ -182,6 +227,22 @@ try {
                 'link' => linkProduto($marca, $id, (string) $c['nome'], $cfg),
             ];
         }
+        if ($tipo === 'black') {
+            // produto em promoção que ainda não está no catálogo: entra com o nome do ERP, sem foto
+            $noCatalogo = array_flip(array_map(fn ($x) => (int) $x['id_erp'], $produtos));
+            foreach ($erpRows as $id => $r) {
+                if (!isset($noCatalogo[$id])) {
+                    $produtos[] = ['id_erp' => $id, 'nome' => $r['nome_erp'], 'sexo' => '', 'marca' => '', 'imagem' => ''] + $r + [
+                        'link' => linkProduto($marca, $id, (string) $r['nome_erp'], $cfg),
+                    ];
+                }
+            }
+            foreach ($produtos as &$pp) {
+                $pp['promo'] = $promosBlack[(int) $pp['id_erp']]['preco'];
+                $pp['campanha'] = $promosBlack[(int) $pp['id_erp']]['campanha'];
+            }
+            unset($pp);
+        }
     }
 } catch (Throwable $e) {
     error_log('[catalogo-pdf] ' . $e->getMessage());
@@ -194,8 +255,25 @@ if (!$produtos) {
 }
 
 // ---- agrupa por gênero (Femininos, Masculinos, Unissex) e ordena por marca/nome ----
-// Ciclo: agrupa por linha (Kids primeiro) e ordena por nome
-if ($tipo === 'ciclo') {
+// Black: agrupa pela campanha (ordem de BLACK_ORDEM, depois alfabética) e ordena por marca/nome
+if ($tipo === 'black') {
+    $grupos = [];
+    foreach (BLACK_ORDEM as $nomeCamp) {
+        $grupos[$nomeCamp] = [];
+    }
+    foreach ($produtos as $p) {
+        $grupos[$p['campanha']][] = $p;
+    }
+    $fixos = array_intersect_key($grupos, array_flip(BLACK_ORDEM));
+    $outros = array_diff_key($grupos, $fixos);
+    ksort($outros);
+    $grupos = $fixos + $outros;
+    foreach ($grupos as &$lista) {
+        usort($lista, fn ($a, $b) => strcasecmp(trim((string) $a['marca']), trim((string) $b['marca'])) ?: strcasecmp($a['nome'], $b['nome']));
+    }
+    unset($lista);
+    $nomesGrupo = array_combine(array_keys($grupos), array_map(fn ($k) => ucwords(mb_strtolower($k)), array_keys($grupos)));
+} elseif ($tipo === 'ciclo') {
     $grupos = ['kids' => [], 'colonia' => [], 'splash' => [], 'hidratante' => [], 'outros' => []];
     foreach ($produtos as $p) {
         $grupos[linhaCiclo($p)][] = $p;
@@ -378,7 +456,10 @@ if ($ciclo) {
     }
     $pdf->CapaCiclo($subtitulo, count($produtos), $presentes);
 } else {
-    $pdf->Capa($subtitulo, count($produtos));
+    $pdf->Capa($tipo === 'black' ? 'Só nos dias 13 e 14 de novembro · preços em qualquer quantidade' : $subtitulo, count($produtos));
+}
+if ($tipo === 'black' && BLACK_BRINDES) {
+    $pdf->PaginaBlocos('Brindes', 'Brindes da Black Friday', BLACK_BRINDES);
 }
 
 foreach ($grupos as $g => $lista) {
