@@ -155,42 +155,42 @@
         </div>
         <div class="row g-3" id="lista-catalogos">
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_arabes_novo.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_arabes_novo.php" data-zip="arabes" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Arabes
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_frances.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_frances.php" data-zip="frances" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Francês
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_miniaturas.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_miniaturas.php" data-zip="miniaturas" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Miniaturas
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_hidratantes.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_hidratantes.php" data-zip="hidratantes" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Hidratantes
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_vs.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_vs.php" data-zip="body-splash" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Body-Splash
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_sprays.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_sprays.php" data-zip="body-sprays" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Body-Sprays
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_ciclo.php" class="btn btn-outline-danger w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_ciclo.php" data-zip="ciclo" class="btn btn-outline-danger w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Ciclo (nacionais)
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_paris.php" class="btn btn-outline-danger w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_paris.php" data-zip="paris-elysees" class="btn btn-outline-danger w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Paris Elysees (nacionais)
                 </a>
             </div>
@@ -200,7 +200,7 @@
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
-                <a href="gerar_catalogo_skincare.php" class="btn btn-outline-dark w-100 py-3" target="_blank" rel="noopener">
+                <a href="gerar_catalogo_skincare.php" data-zip="coreanos" class="btn btn-outline-dark w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Skin Care (com esgotados)
                 </a>
             </div>
@@ -242,17 +242,16 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
-    // "Baixar todos": gera um por um os catálogos dos botões acima e entrega tudo num .zip.
-    // Botão novo na lista entra sozinho. Catálogo que não gerar PDF (ex.: Black sem promoção) é pulado.
+    // "Baixar todos": gera um por um os catálogos marcados com data-zip (o valor vira o nome do PDF)
+    // e entrega tudo num .zip. Para incluir/tirar um catálogo, ponha/tire o data-zip no botão.
+    // Catálogo que não gerar PDF é pulado e avisado no fim.
     (function () {
         const btn = document.getElementById('baixar-todos');
         const status = document.getElementById('baixar-todos-status');
         if (!btn) return;
-        const nomeArquivo = (txt) => txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
         btn.addEventListener('click', async () => {
             if (typeof JSZip === 'undefined') { status.textContent = 'Não consegui carregar o compactador. Recarregue a página.'; return; }
-            const links = [...document.querySelectorAll('#lista-catalogos a[href^="gerar_catalogo"]')];
+            const links = [...document.querySelectorAll('#lista-catalogos a[data-zip]')];
             const zip = new JSZip();
             const pulados = [];
             const hoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
@@ -264,7 +263,7 @@
                     const r = await fetch(links[i].getAttribute('href'), { credentials: 'same-origin', cache: 'no-store' });
                     const tipo = r.headers.get('Content-Type') || '';
                     if (!r.ok || !tipo.includes('pdf')) { pulados.push(rotulo); continue; }
-                    zip.file(`${nomeArquivo(rotulo)}-${hoje}.pdf`, await r.blob());
+                    zip.file(`${links[i].dataset.zip}-${hoje}.pdf`, await r.blob());
                 } catch (e) {
                     pulados.push(rotulo);
                 }
