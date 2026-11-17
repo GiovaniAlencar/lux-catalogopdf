@@ -422,7 +422,7 @@ class CatalogoPdf extends FPDF
                 $this->SetX($cx);
                 $this->SetFont('Helvetica', '', 5);
                 $this->cor(self::CINZA, 'T');
-                $this->Cell($cw, 2.8, self::t('em qualquer quantidade'), 0, 0);
+                $this->Cell($cw, 2.8, self::t('preço de Black'), 0, 0);
             } else {
                 $this->SetXY($cx, $byb - 7.4);
                 $this->SetFont('Helvetica', 'B', 10.5);

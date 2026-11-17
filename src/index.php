@@ -147,7 +147,13 @@
     <div class="container my-5">
         <h2 class="text-center mb-4"><i class="fas fa-download"></i> Download dos Catálogos</h2>
         <p class="text-center text-muted mb-4">Clique no catálogo desejado para gerar e baixar o PDF.</p>
-        <div class="row g-3">
+        <div class="text-center mb-4">
+            <button type="button" id="baixar-todos" class="btn btn-warning btn-lg px-4">
+                <i class="fas fa-file-archive me-2"></i> Baixar todos os catálogos (.zip)
+            </button>
+            <div id="baixar-todos-status" class="small text-muted mt-2" aria-live="polite"></div>
+        </div>
+        <div class="row g-3" id="lista-catalogos">
             <div class="col-md-4 col-lg-3">
                 <a href="gerar_catalogo_arabes_novo.php" class="btn btn-outline-primary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Arabes
@@ -194,6 +200,11 @@
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
+                <a href="gerar_catalogo_skincare.php" class="btn btn-outline-dark w-100 py-3" target="_blank" rel="noopener">
+                    <i class="fas fa-file-pdf mb-2 d-block"></i> Skin Care (com esgotados)
+                </a>
+            </div>
+            <div class="col-md-4 col-lg-3">
                 <a href="gerar_catalogo_sem_preco.php" class="btn btn-outline-secondary w-100 py-3" target="_blank" rel="noopener">
                     <i class="fas fa-file-pdf mb-2 d-block"></i> Sem preço (Arabes)
                 </a>
@@ -229,5 +240,54 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+    // "Baixar todos": gera um por um os catálogos dos botões acima e entrega tudo num .zip.
+    // Botão novo na lista entra sozinho. Catálogo que não gerar PDF (ex.: Black sem promoção) é pulado.
+    (function () {
+        const btn = document.getElementById('baixar-todos');
+        const status = document.getElementById('baixar-todos-status');
+        if (!btn) return;
+        const nomeArquivo = (txt) => txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+        btn.addEventListener('click', async () => {
+            if (typeof JSZip === 'undefined') { status.textContent = 'Não consegui carregar o compactador. Recarregue a página.'; return; }
+            const links = [...document.querySelectorAll('#lista-catalogos a[href^="gerar_catalogo"]')];
+            const zip = new JSZip();
+            const pulados = [];
+            const hoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+            btn.disabled = true;
+            for (let i = 0; i < links.length; i++) {
+                const rotulo = links[i].textContent.trim();
+                status.textContent = `Gerando ${i + 1} de ${links.length}: ${rotulo}... (pode demorar alguns minutos)`;
+                try {
+                    const r = await fetch(links[i].getAttribute('href'), { credentials: 'same-origin', cache: 'no-store' });
+                    const tipo = r.headers.get('Content-Type') || '';
+                    if (!r.ok || !tipo.includes('pdf')) { pulados.push(rotulo); continue; }
+                    zip.file(`${nomeArquivo(rotulo)}-${hoje}.pdf`, await r.blob());
+                } catch (e) {
+                    pulados.push(rotulo);
+                }
+            }
+            const qtd = Object.keys(zip.files).length;
+            if (!qtd) {
+                status.textContent = 'Nenhum catálogo foi gerado. Tente de novo.';
+                btn.disabled = false;
+                return;
+            }
+            status.textContent = 'Compactando...';
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `catalogos-lux-${hoje}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+            status.textContent = `Pronto: ${qtd} catálogo(s) no .zip.` + (pulados.length ? ` Ficaram de fora: ${pulados.join(', ')}.` : '');
+            btn.disabled = false;
+        });
+    })();
+    </script>
 </body>
 </html>

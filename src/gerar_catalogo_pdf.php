@@ -2,7 +2,7 @@
 /**
  * Gerador único dos catálogos em PDF (substitui os gerar_catalogo_*.php copiados).
  *   gerar_catalogo_pdf.php?tipo=arabes | frances | miniaturas | hidratantes | vs | sprays
- *                               | sem_preco | sem_preco_miniaturas | ciclo | paris | black | arabes_mae | arabes_mae_10
+ *                               | sem_preco | sem_preco_miniaturas | ciclo | paris | black | skincare | arabes_mae | arabes_mae_10
  *   (POST produtos[] = ids da tabela products do catálogo → tipo "selecionados")
  * Preços iguais ao catálogo antigo; visual do site; 4 produtos por linha (12 por página);
  * botão "Ver detalhes" abre a página do produto em luxatacado.com.br/produto/{id}.
@@ -41,10 +41,18 @@ const TIPOS = [
     // Black Friday: todos os produtos com promoção ativa ou agendada no ERP (Vendas › Promoções),
     // separados pela campanha (nome da campanha na importação em lote), com "de/por"
     'black'                => ['Black Friday LUX', [], 'promo', 'lux'],
+    // Skin Care: layout próprio (2 por página, por linha, funções/indicado para, esgotados) — lib/catalogo_skincare.php
+    'skincare'             => ['Skin Care', [], 'unico', 'lux'],
     // Bella Parfum: preços dela sobre o preço de 20 un. (5 un. +22% e 10 un. +18%; o "_10" só um preço, +12%)
     'arabes_mae'           => ['Perfumes Árabes', [3], 'bella', 'bella'],
     'arabes_mae_10'        => ['Perfumes Árabes', [3], 'bella10', 'bella'],
 ];
+
+// Fotos: tamanho pensado para o card (~45 mm): 360 px / JPEG 70 deixa cada foto com ~10-15 KB.
+// (ficam aqui em cima porque o Skin Care usa as funções de foto antes do resto do arquivo rodar)
+const FOTO_MAX_PX = 360;
+const FOTO_QUALIDADE = 70;
+const FOTO_FALHA_TTL = 86400; // foto que não baixou: não tenta de novo por 24 h
 
 /** Link do produto no PDF conforme a identidade. */
 function linkProduto(string $marca, int $id, string $nome, array $cfg): ?string
@@ -159,6 +167,10 @@ if (!isset(TIPOS[$tipo])) {
 }
 [$titulo, $categorias, $precos, $marca] = TIPOS[$tipo];
 $cfg = luxConfig();
+if ($tipo === 'skincare') {
+    require __DIR__ . '/lib/catalogo_skincare.php';
+    exit;
+}
 
 // ---- produtos com estoque (ERP) + nome/foto/marca (catálogo) ----
 try {
@@ -296,11 +308,7 @@ if ($tipo === 'black') {
     $nomesGrupo = ['feminino' => 'Femininos', 'masculino' => 'Masculinos', 'unissex' => 'Unissex', 'outros' => 'Outros'];
 }
 
-// ---- fotos: arquivo local (uploads/) ou baixada do CDN; reduzida e guardada em cache ----
-// Tamanho pensado para o card (~45 mm): 360 px / JPEG 70 deixa cada foto com ~10-15 KB.
-const FOTO_MAX_PX = 360;
-const FOTO_QUALIDADE = 70;
-const FOTO_FALHA_TTL = 86400; // foto que não baixou: não tenta de novo por 24 h
+// ---- fotos: arquivo local (uploads/) ou baixada do CDN; reduzida e guardada em cache (constantes FOTO_* lá em cima) ----
 
 function fotoCacheDir(): string
 {
@@ -317,13 +325,14 @@ function fotoNomeLimpo(?string $img): ?string
     return ($img === '' || strpos($img, '..') !== false) ? null : $img;
 }
 
-function fotoDestino(string $img): string
+function fotoDestino(string $img, int $px = FOTO_MAX_PX): string
 {
-    return fotoCacheDir() . '/' . md5($img) . '.jpg';
+    // tamanho diferente do padrão (ex.: Skin Care) fica num arquivo próprio no cache
+    return fotoCacheDir() . '/' . md5($img) . ($px === FOTO_MAX_PX ? '' : '-' . $px) . '.jpg';
 }
 
 /** Reduz e grava a foto no cache. Retorna o caminho ou null. */
-function fotoGravar(string $bytes, string $destino): ?string
+function fotoGravar(string $bytes, string $destino, int $px = FOTO_MAX_PX, array $fundo = [247, 245, 240]): ?string
 {
     $src = @imagecreatefromstring($bytes);
     if (!$src) {
@@ -331,11 +340,11 @@ function fotoGravar(string $bytes, string $destino): ?string
     }
     $w = imagesx($src);
     $h = imagesy($src);
-    $esc = min(FOTO_MAX_PX / $w, FOTO_MAX_PX / $h, 1);
+    $esc = min($px / $w, $px / $h, 1);
     $nw = max(1, (int) round($w * $esc));
     $nh = max(1, (int) round($h * $esc));
     $dst = imagecreatetruecolor($nw, $nh);
-    imagefill($dst, 0, 0, imagecolorallocate($dst, 247, 245, 240));
+    imagefill($dst, 0, 0, imagecolorallocate($dst, $fundo[0], $fundo[1], $fundo[2]));
     imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
     imageinterlace($dst, false);
     $ok = imagejpeg($dst, $destino, FOTO_QUALIDADE);
@@ -349,12 +358,12 @@ function fotoGravar(string $bytes, string $destino): ?string
  * as locais são convertidas e as que faltam são baixadas em paralelo.
  * Retorna [nomeDaImagem => caminhoDoJpeg].
  */
-function prepararFotos(array $imagens, array $cfg): array
+function prepararFotos(array $imagens, array $cfg, int $px = FOTO_MAX_PX, array $fundo = [247, 245, 240]): array
 {
     $prontas = [];
     $baixar = [];
     foreach (array_unique(array_filter(array_map('fotoNomeLimpo', $imagens))) as $img) {
-        $destino = fotoDestino($img);
+        $destino = fotoDestino($img, $px);
         $original = __DIR__ . '/uploads/' . $img;
         $temOriginal = is_file($original);
         if (is_file($destino) && (!$temOriginal || filemtime($destino) >= filemtime($original))) {
@@ -363,7 +372,7 @@ function prepararFotos(array $imagens, array $cfg): array
         }
         if ($temOriginal) {
             $bytes = @file_get_contents($original);
-            if ($bytes && ($f = fotoGravar($bytes, $destino))) {
+            if ($bytes && ($f = fotoGravar($bytes, $destino, $px, $fundo))) {
                 $prontas[$img] = $f;
             }
             continue;
@@ -403,11 +412,11 @@ function prepararFotos(array $imagens, array $cfg): array
             foreach ($hs as $img => $ch) {
                 $bytes = curl_multi_getcontent($ch);
                 $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $f = ($code === 200 && $bytes) ? fotoGravar($bytes, fotoDestino($img)) : null;
+                $f = ($code === 200 && $bytes) ? fotoGravar($bytes, fotoDestino($img, $px), $px, $fundo) : null;
                 if ($f) {
                     $prontas[$img] = $f;
                 } else {
-                    @touch(fotoDestino($img) . '.falha');
+                    @touch(fotoDestino($img, $px) . '.falha');
                 }
                 curl_multi_remove_handle($mh, $ch);
                 curl_close($ch);
@@ -418,11 +427,11 @@ function prepararFotos(array $imagens, array $cfg): array
         $ctx = stream_context_create(['http' => ['timeout' => 5], 'https' => ['timeout' => 5]]);
         foreach ($baixar as $img => $url) {
             $bytes = @file_get_contents($url, false, $ctx);
-            $f = $bytes ? fotoGravar($bytes, fotoDestino($img)) : null;
+            $f = $bytes ? fotoGravar($bytes, fotoDestino($img, $px), $px, $fundo) : null;
             if ($f) {
                 $prontas[$img] = $f;
             } else {
-                @touch(fotoDestino($img) . '.falha');
+                @touch(fotoDestino($img, $px) . '.falha');
             }
         }
     }
@@ -456,7 +465,7 @@ if ($ciclo) {
     }
     $pdf->CapaCiclo($subtitulo, count($produtos), $presentes);
 } else {
-    $pdf->Capa($tipo === 'black' ? 'Só nos dias 13 e 14 de novembro · preços em qualquer quantidade' : $subtitulo, count($produtos));
+    $pdf->Capa($tipo === 'black' ? 'Só nos dias 13 e 14 de novembro · pedido mínimo de 3 unidades (pode misturar)' : $subtitulo, count($produtos));
 }
 if ($tipo === 'black' && BLACK_BRINDES) {
     $pdf->PaginaBlocos('Brindes', 'Brindes da Black Friday', BLACK_BRINDES);
