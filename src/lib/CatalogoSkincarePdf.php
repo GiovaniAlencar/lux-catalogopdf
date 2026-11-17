@@ -23,6 +23,21 @@ class CatalogoSkincarePdf extends CatalogoPdf
     ];
     const OUTROS = ['Outros', '', [55, 55, 60], [25, 25, 28], true];
 
+    /** Só a marca que tem as linhas acima é separada por linha; as outras marcas viram uma seção cada. */
+    const MARCA_COM_LINHAS = '/medicube/i';
+
+    /** Cores das seções de marca (escolhida pelo nome da marca, sempre a mesma para a mesma marca). */
+    const CORES_MARCA = [
+        [[23, 120, 112], [12, 74, 70]],
+        [[46, 88, 160], [24, 50, 104]],
+        [[112, 56, 168], [70, 28, 118]],
+        [[34, 128, 74], [18, 82, 46]],
+        [[176, 92, 40], [120, 56, 20]],
+        [[84, 96, 114], [44, 52, 64]],
+        [[170, 60, 96], [112, 30, 62]],
+        [[150, 118, 52], [98, 74, 28]],
+    ];
+
     /** cores da página atual (fundo em degradê) e do texto */
     public ?array $fundo = null;
     public bool $claro = true;
@@ -49,8 +64,12 @@ class CatalogoSkincarePdf extends CatalogoPdf
         return [];
     }
 
-    /** Linha do produto: "Linha: X" na descrição vence; senão pelo nome. */
-    public static function linhaDe(string $nome, ?string $linhaDescricao): array
+    /**
+     * Seção do produto no PDF. "Linha: X" na descrição vence. Medicube: pela linha (nome do produto).
+     * Outras marcas: uma seção por marca (página "MARCA · CELIMAX"). Sem marca: "Outras marcas".
+     * Formato: [nome, padrão, cor de cima, cor de baixo, texto claro?, 'LINHA'|'MARCA']
+     */
+    public static function linhaDe(string $nome, ?string $linhaDescricao, string $marca = ''): array
     {
         if ($linhaDescricao) {
             foreach (self::LINHAS as $l) {
@@ -62,13 +81,23 @@ class CatalogoSkincarePdf extends CatalogoPdf
             $o[0] = trim($linhaDescricao);
             return $o;
         }
+        $temLinhas = $marca !== '' ? preg_match(self::MARCA_COM_LINHAS, $marca) : preg_match(self::MARCA_COM_LINHAS, $nome);
+        if (!$temLinhas) {
+            $secao = $marca !== '' ? $marca : 'Outras marcas';
+            $cores = self::CORES_MARCA[crc32(mb_strtolower($secao)) % count(self::CORES_MARCA)];
+            return [$secao, '', $cores[0], $cores[1], true, 'MARCA'];
+        }
         $n = mb_strtoupper($nome);
         foreach (self::LINHAS as $l) {
             if (preg_match($l[1], $n)) {
                 return $l;
             }
         }
-        return self::OUTROS;
+        // produto da marca que não é de nenhuma linha: página "MEDICUBE / OUTROS PRODUTOS"
+        $o = self::OUTROS;
+        $o[0] = 'Outros produtos';
+        $o[5] = $marca !== '' ? $marca : 'Linha';
+        return $o;
     }
 
     /**
@@ -231,7 +260,7 @@ class CatalogoSkincarePdf extends CatalogoPdf
         $this->SetXY(10, 136);
         $this->SetFont('Helvetica', '', 9);
         $this->cor($this->claro ? [245, 245, 245] : [50, 50, 50], 'T');
-        $this->Cell(190, 6, 'L I N H A', 0, 1, 'C');
+        $this->Cell(190, 6, self::espacado($linha[5] ?? 'Linha'), 0, 1, 'C');
         $tam = 40;
         $this->SetFont('Times', 'BI', $tam);
         while ($tam > 18 && $this->GetStringWidth(self::t(mb_strtoupper($linha[0]))) > 180) {

@@ -42,11 +42,11 @@ try {
         $st->execute(array_keys($erpRows));
         foreach ($st->fetchAll() as $c) {
             $id = (int) $c['id_erp'];
-            $marcaProd = trim((string) $c['marca']) ?: 'Skin Care';
+            $marcaProd = trim((string) $c['marca']);
             $skin = CatalogoSkincarePdf::lerDescricao($c['descricao']);
-            $linha = CatalogoSkincarePdf::linhaDe((string) $c['nome'], $skin['linha']);
+            $linha = CatalogoSkincarePdf::linhaDe((string) $c['nome'], $skin['linha'], $marcaProd);
             $produtos[] = $c + $erpRows[$id] + [
-                'marca_nome' => $marcaProd,
+                'marca_nome' => $marcaProd !== '' ? $marcaProd : 'Outras marcas',
                 'skin' => $skin,
                 'linha' => $linha,
                 'titulo' => CatalogoSkincarePdf::nomeLimpo((string) $c['nome'], $marcaProd),
@@ -64,10 +64,13 @@ if (!$produtos) {
     exit('Nenhum produto de Skin Care cadastrado no catálogo.');
 }
 
-// marca → linha (na ordem de CatalogoSkincarePdf::LINHAS, "Outros" no fim) → nome
+// Medicube primeiro (por linha, na ordem de CatalogoSkincarePdf::LINHAS), depois as outras marcas
+// em ordem alfabética e "Outras marcas" no fim; dentro de cada seção, por nome
 $ordemLinha = array_flip(array_column(CatalogoSkincarePdf::LINHAS, 0));
-usort($produtos, function ($a, $b) use ($ordemLinha) {
-    return strcasecmp($a['marca_nome'], $b['marca_nome'])
+$pesoMarca = fn ($m) => preg_match(CatalogoSkincarePdf::MARCA_COM_LINHAS, $m) ? 0 : ($m === 'Outras marcas' ? 2 : 1);
+usort($produtos, function ($a, $b) use ($ordemLinha, $pesoMarca) {
+    return ($pesoMarca($a['marca_nome']) <=> $pesoMarca($b['marca_nome']))
+        ?: strcasecmp($a['marca_nome'], $b['marca_nome'])
         ?: (($ordemLinha[$a['linha'][0]] ?? 999) <=> ($ordemLinha[$b['linha'][0]] ?? 999))
         ?: strcmp($a['linha'][0], $b['linha'][0])
         ?: strcasecmp($a['titulo'], $b['titulo']);
@@ -98,7 +101,8 @@ $pdf->CapaSkin(count($marcas) === 1 ? $marcas[0] : 'Skin Care', 'Catálogo de Sk
 foreach ($grupos as $lista) {
     $linha = $lista[0]['linha'];
     $pdf->PaginaLinha($linha);
-    $pdf->etiqueta = (count($marcas) > 1 || $lista[0]['marca_nome'] !== 'Skin Care' ? $lista[0]['marca_nome'] . ' · ' : '') . $linha[0];
+    // seção de marca: só o nome da marca; seção de linha: "MEDICUBE · COLLAGEN"
+    $pdf->etiqueta = ($linha[5] ?? '') === 'MARCA' ? $linha[0] : $lista[0]['marca_nome'] . ' · ' . $linha[0];
     foreach (array_chunk($lista, 2) as $par) {
         $pdf->AddPage();
         foreach ($par as $slot => $p) {
